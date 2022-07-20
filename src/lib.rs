@@ -1,5 +1,8 @@
 use std::panic;
 use wasm_bindgen::{prelude::*, JsCast};
+use wasm_bindgen_futures::spawn_local;
+
+mod page;
 
 #[wasm_bindgen]
 extern "C" {
@@ -48,10 +51,12 @@ pub fn setup_links(links: web_sys::NodeList) {
     for i in 0..links.length() {
         let c = Closure::wrap(Box::new(move |e: web_sys::MouseEvent| {
             let target = e.target().unwrap().dyn_into::<web_sys::Element>().unwrap();
-            alert(&target.get_attribute("href").unwrap());
+            let url = target.get_attribute("href").unwrap();
             e.prevent_default();
             e.stop_immediate_propagation();
             e.stop_propagation();
+
+            spawn_local(page::add_page("http:".to_string() + &url + "/index.json"));
         }) as Box<dyn FnMut(_)>);
 
         log("adding click event");
