@@ -1,10 +1,14 @@
 use std::panic;
-use url::{ParseError, Url};
-use wasm_bindgen::{prelude::*, JsCast};
-use wasm_bindgen_futures::spawn_local;
-use web_sys::Element;
+use url::Url;
+use wasm_bindgen::prelude::*;
 
+#[macro_use]
+extern crate lazy_static;
+
+mod book;
 mod page;
+
+use book::Book;
 
 #[wasm_bindgen]
 extern "C" {
@@ -17,6 +21,12 @@ extern "C" {
     fn alert(s: &str);
 }
 
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(module = "/helper.js", js_name = "typesetMath")]
+    pub fn typeset_math();
+}
+
 macro_rules! _log {
     ($($t:tt)*) => (crate::console_log(&format_args!($($t)*).to_string()))
 }
@@ -27,70 +37,39 @@ pub fn log(s: &str) {
     _log!("{}", s);
 }
 
-#[wasm_bindgen]
-pub fn setup() {
-    panic::set_hook(Box::new(console_error_panic_hook::hook));
+lazy_static! {
+    static ref BOOK: book::Book = Book::new();
+}
 
+#[wasm_bindgen]
+pub async fn setup() {
+    panic::set_hook(Box::new(console_error_panic_hook::hook));
+    crate::log("wasm setup");
     let window = web_sys::window().expect("Global window does not exist");
     let document = window.document().expect("Expecting a document on window");
-    let page = document.get_element_by_id("main");
+    let page = document.get_element_by_id("page-0");
     match page {
         Some(p) => {
-            page_init(p);
+            crate::log("adding home page");
+            BOOK.add_home_page(p);
         }
-        None => log("Cannot get element with class page"),
+        None => log("Cannot get element with id page-0"),
     }
 }
 
-pub fn page_init(page: Element) {
-    let links = page
-        .query_selector_all("a")
-        .unwrap()
-        .dyn_into::<web_sys::NodeList>()
-        .unwrap();
-    setup_links(links);
-}
+fn get_origin(u: Url) -> String {
+    let mut url = Url::parse(&u[..url::Position::BeforePath]).unwrap();
 
-pub fn setup_links(links: web_sys::NodeList) {
-    log(&format!("Num Links in page: {}", links.length()));
-
-    for i in 0..links.length() {
-        let c = Closure::wrap(Box::new(move |e: web_sys::MouseEvent| {
-            let target = e.target().unwrap().dyn_into::<web_sys::Element>().unwrap();
-            let mut url = target.get_attribute("href").unwrap();
-            let window = web_sys::window().expect("Global window does not exist");
-
-            let location = window.location();
-            loop {
-                let parsed_url = Url::parse(&url);
-                match parsed_url {
-                    Ok(u) => {
-                        console_log(u.as_str());
-                        break;
-                    }
-                    Err(e) => match e {
-                        ParseError::RelativeUrlWithoutBase => {
-                            url = location.origin().unwrap() + &url;
-                        }
-                        _ => console_log(&format!("{:?}", e)),
-                    },
-                };
-            }
-
-            e.prevent_default();
-            e.stop_immediate_propagation();
-            e.stop_propagation();
-
-            spawn_local(page::add_page(url + "/index.json"));
-        }) as Box<dyn FnMut(_)>);
-
-        log("adding click event");
-        links
-            .item(i)
-            .unwrap()
-            .dyn_into::<web_sys::HtmlElement>()
-            .unwrap()
-            .set_onclick(Some(c.as_ref().unchecked_ref()));
-        c.forget();
+    match url.set_host(Some(u.host_str().unwrap())) {
+        Ok(()) => {}
+        Err(e) => log(&e.to_string()),
     }
+    url.set_scheme(u.scheme()).unwrap();
+    if let Some(p) = u.port() {
+        url.set_port(Some(p)).unwrap();
+    }
+
+    let mut chars = url.as_str().chars();
+    chars.next_back();
+    return chars.as_str().to_string();
 }

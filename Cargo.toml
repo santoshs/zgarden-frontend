@@ -16,6 +16,8 @@ console_error_panic_hook = { version = "0.1.6", optional = true }
 reqwest = { version = "0.11.11", features = ["json",] }
 serde = { version = "1.0", features = ["derive"] }
 url = "2.2.2"
+lazy_static = "1.4.0"
+uuid = { version = "1.1.2", features = ["v4", "js"] }
 
 [dependencies.web-sys]
 version = "0.3.6"
@@ -30,4 +32,5 @@ features = [
     "MouseEvent",
     "HtmlLinkElement",
     "Location",
+    "DomTokenList",
 ]
