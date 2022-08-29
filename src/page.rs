@@ -4,6 +4,7 @@ use url::{ParseError, Url};
 use wasm_bindgen::{closure::Closure, prelude::*, JsCast};
 use wasm_bindgen_futures::spawn_local;
 
+use crate::get_book;
 use crate::{console_log, log, typeset_math};
 
 #[derive(Clone)]
@@ -21,7 +22,7 @@ struct NoteNode {
 }
 
 impl Page {
-    pub async fn init(&self, book: &'static crate::Book) {
+    pub async fn init(&self) {
         let mut headers = header::HeaderMap::new();
         headers.insert(
             CONTENT_TYPE,
@@ -53,13 +54,14 @@ impl Page {
                 self.element.append_child(&content).unwrap();
                 typeset_math();
 
-                self.setup_links(book);
+                self.setup_links();
             }
             Err(e) => log(&e.to_string()),
         }
     }
 
-    pub fn setup_links(&self, book: &'static crate::Book) {
+    pub fn setup_links(&self) {
+        let book = get_book();
         let links = self
             .element
             .query_selector_all("a")
@@ -70,12 +72,12 @@ impl Page {
         crate::log(&format!("Num Links in page: {}", links.length()));
 
         for i in 0..links.length() {
+            let link = links.item(i).clone();
             let c = Closure::wrap(Box::new(move |e: web_sys::MouseEvent| {
                 let target = e.target().unwrap().dyn_into::<web_sys::Element>().unwrap();
                 let mut url = target.get_attribute("href").unwrap();
-                let window = web_sys::window().expect("Global window does not exist");
+                let location = book.window().location();
 
-                let location = window.location();
                 loop {
                     let parsed_url = Url::parse(&url);
                     match parsed_url {
@@ -93,7 +95,7 @@ impl Page {
                 e.stop_immediate_propagation();
                 e.stop_propagation();
 
-                spawn_local(book.add_page(url));
+                spawn_local(book.add_page(url, link.clone()));
             }) as Box<dyn FnMut(_)>);
 
             let link = links

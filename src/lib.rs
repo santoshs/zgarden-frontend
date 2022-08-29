@@ -37,8 +37,12 @@ pub fn log(s: &str) {
     _log!("{}", s);
 }
 
-lazy_static! {
-    static ref BOOK: book::Book = Book::new();
+fn get_book() -> &'static Book {
+    log("get_book called");
+    lazy_static! {
+        static ref BOOK: Book = Book::new();
+    }
+    &BOOK
 }
 
 #[wasm_bindgen]
@@ -48,10 +52,11 @@ pub async fn setup() {
     let window = web_sys::window().expect("Global window does not exist");
     let document = window.document().expect("Expecting a document on window");
     let page = document.get_element_by_id("page-0");
+
     match page {
         Some(p) => {
             crate::log("adding home page");
-            BOOK.add_home_page(p);
+            get_book().add_home_page(p);
         }
         None => log("Cannot get element with id page-0"),
     }
@@ -73,3 +78,7 @@ fn get_origin(u: Url) -> String {
     chars.next_back();
     return chars.as_str().to_string();
 }
+
+// fn print_type_of<T>(_: &T) {
+//     console_log(&format!("variable type is: {}", std::any::type_name::<T>()))
+// }

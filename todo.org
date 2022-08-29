@@ -1,6 +1,6 @@
 - [X] Skip adding click actions to external urls
 - [X] Skip adding click actions to footnotes
 - [X] Open external urls in a new tab
-- [ ] When opening a link from the middle of the stack, pop all of the above it
+- [X] When opening a link from the middle of the stack, pop all of the above it
 - [ ] Minimize previous stacks when going above window width
 - [ ] Show breadcrumbs from home to the current node

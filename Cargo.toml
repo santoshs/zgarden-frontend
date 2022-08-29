@@ -33,4 +33,5 @@ features = [
     "HtmlLinkElement",
     "Location",
     "DomTokenList",
+    "HtmlAnchorElement",
 ]

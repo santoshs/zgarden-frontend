@@ -1,30 +1,38 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
+use wasm_bindgen::JsCast;
 
-use crate::page::Page;
+use crate::{log, page::Page};
 
 pub struct Book {
-    // window: web_sys::Window,
+    window: web_sys::Window,
     document: web_sys::Document,
     element: web_sys::Element,
-    pages: Arc<Mutex<HashMap<String, Arc<Page>>>>,
+    pages_by_url: Arc<Mutex<HashMap<String, Arc<Page>>>>,
+    pages_by_id: Arc<Mutex<HashMap<String, Arc<Page>>>>,
+    page_list: Mutex<Vec<Arc<Page>>>,
 }
 
 unsafe impl Sync for Book {}
 impl Book {
     pub fn new() -> Book {
+        crate::log("Creating new book");
         let window = web_sys::window().expect("Global window does not exist");
         let document = window.document().expect("Expecting a document on window");
         let element = document.get_element_by_id("main").unwrap();
         Book {
+            window,
             document,
-            pages: Arc::new(Mutex::new(HashMap::new())),
+            pages_by_url: Arc::new(Mutex::new(HashMap::new())),
+            pages_by_id: Arc::new(Mutex::new(HashMap::new())),
             element,
+            page_list: Mutex::new(Vec::new()),
         }
     }
 
     pub fn add_home_page(&'static self, elem: web_sys::Element) {
+        crate::log("Adding home page");
         let url = "/".to_string();
         let page = Arc::new(Page {
             url: url.clone(),
@@ -33,30 +41,64 @@ impl Book {
             document: self.document.clone(),
         });
 
-        self.pages.lock().unwrap().insert(url.clone(), page.clone());
-        page.setup_links(self);
+        self.insert_page(page.clone(), url, "page-0".to_string());
+        self.page_list.lock().unwrap().push(page.clone());
+        page.setup_links();
     }
 
-    pub async fn add_page(&'static self, url: String) {
+    pub async fn add_page(&'static self, url: String, link: Option<web_sys::Node>) {
+        crate::log(&format!("Adding page for {}", url));
         let page = match self.get_page(url.clone()) {
             Some(page) => page,
             None => {
                 let id = Uuid::new_v4().to_string();
-                let element = self.document.create_element("iv").unwrap();
-                element.set_class_name("note");
-                element.set_class_name("col-4");
+                let element = self.document.create_element("div").unwrap();
 
-                self.element.append_child(&element).unwrap();
+                element.class_list().add_2("note", "col-4").unwrap();
+                element.set_id(&id);
+
+                let link_node = link.unwrap();
+                let anchor: &web_sys::HtmlAnchorElement =
+                    link_node.dyn_ref::<web_sys::HtmlAnchorElement>().unwrap();
+                anchor.set_class_name("red");
+                match anchor.closest(".note") {
+                    Ok(elem) => match elem {
+                        Some(e) => {
+                            log(&e.id());
+                            let mut page_list = self.page_list.lock().unwrap();
+                            let len = page_list.len();
+                            let parent_index =
+                                page_list.iter().position(|x| x.id == e.id()).unwrap() + 1;
+                            if parent_index < page_list.len() {
+                                for p in page_list.iter().skip(parent_index) {
+                                    p.element.remove();
+                                    self.pages_by_id.lock().unwrap().remove(&p.id);
+                                    self.pages_by_url.lock().unwrap().remove(&p.url);
+                                }
+                            }
+                            page_list.drain(parent_index..len);
+                        }
+                        None => log("No parent found"),
+                    },
+                    Err(e) => log(&format!("{:?}", e)),
+                }
 
                 let page = Arc::new(Page {
                     url: url.clone(),
                     element: element.clone(),
-                    id,
+                    id: id.clone(),
                     document: self.document.clone(),
                 });
 
-                self.pages.lock().unwrap().insert(url, page.clone());
-                page.init(self).await;
+                log(&format!(
+                    "number of page in list: {}",
+                    self.page_list.lock().unwrap().len()
+                ));
+                self.page_list.lock().unwrap().push(page.clone());
+                self.element.append_child(&element).unwrap();
+
+                self.insert_page(page.clone(), url, id.clone());
+                page.init().await;
                 page
             }
         };
@@ -64,9 +106,14 @@ impl Book {
         page.element.scroll_into_view();
     }
 
+    fn insert_page(&self, page: Arc<Page>, url: String, id: String) {
+        self.pages_by_url.lock().unwrap().insert(url, page.clone());
+        self.pages_by_id.lock().unwrap().insert(id, page.clone());
+    }
+
     pub fn get_page(&self, url: String) -> Option<Arc<Page>> {
-        match self.pages.lock() {
-            Ok(p) => match p.get(&url.clone()) {
+        match self.pages_by_url.lock() {
+            Ok(p) => match p.get(&url) {
                 Some(page) => Some(page.clone()),
                 None => None,
             },
@@ -75,5 +122,9 @@ impl Book {
                 None
             }
         }
+    }
+
+    pub fn window(&self) -> web_sys::Window {
+        self.window.clone()
     }
 }
