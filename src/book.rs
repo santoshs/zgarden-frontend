@@ -69,7 +69,6 @@ impl Book {
                 match anchor.closest(".note") {
                     Ok(elem) => match elem {
                         Some(e) => {
-                            log(&e.id());
                             let mut page_list = self.page_list.lock().unwrap();
                             let len = page_list.len();
                             let parent_index =
@@ -114,15 +113,12 @@ impl Book {
 
     fn insert_page(&self, page: Arc<Page>, url: String, id: String) {
         self.pages_by_url.lock().unwrap().insert(url, page.clone());
-        self.pages_by_id.lock().unwrap().insert(id, page.clone());
+        self.pages_by_id.lock().unwrap().insert(id, page);
     }
 
     pub fn get_page(&self, url: String) -> Option<Arc<Page>> {
         match self.pages_by_url.lock() {
-            Ok(p) => match p.get(&url) {
-                Some(page) => Some(page.clone()),
-                None => None,
-            },
+            Ok(p) => p.get(&url).cloned(),
             Err(e) => {
                 crate::console_log(&e.to_string());
                 None
@@ -134,7 +130,7 @@ impl Book {
         self.window.clone()
     }
 
-    pub fn search(&self, search_term: String) {
+    pub async fn search(&self, search_term: String) {
         if search_term.trim().len() < 3 {
             // Show a alert
             return;
@@ -142,7 +138,7 @@ impl Book {
         log(&format!("searching for .. {}", search_term));
 
         let mut results: HashMap<String, (String, usize)> = HashMap::new();
-        for s in search_term.split(" ") {
+        for s in search_term.split(' ') {
             if let Some(urls) = self.search_index.get(&s.to_lowercase()) {
                 for u in urls.iter() {
                     results
@@ -154,38 +150,27 @@ impl Book {
         }
 
         log(&format!("Found {} results", results.len()));
-        self.show_search_results(search_term, results);
+        self.show_search_results(search_term, results).await;
     }
 
-    pub fn show_search_results(
+    pub async fn show_search_results(
         &self,
         search_term: String,
         results: HashMap<String, (String, usize)>,
     ) {
-        let search_modal = self.document.get_element_by_id("search-modal").unwrap();
-        let search_results = search_modal
-            .query_selector("#search-results")
-            .unwrap()
-            .unwrap();
-        search_modal
-            .query_selector("#search-title")
-            .unwrap()
-            .unwrap()
-            .set_text_content(Some(&format!(
-                "{} notes found for {}",
-                results.len(),
-                search_term
-            )));
-
         // Sort the results based on the number of hits per URL
         let mut sorted: Vec<_> = results.iter().collect();
         sorted.sort_by(|a, b| b.1.cmp(a.1));
-        search_modal.class_list().add_1("active").unwrap();
 
         if sorted.is_empty() {
-            search_results.set_text_content(Some("No results found"));
+            // Show an alert
             return;
         }
+
+        let search_results = self.document.create_element("div").unwrap();
+        let title = self.document.create_element("h1").unwrap();
+        title.set_inner_html(&format!("Notes containing <i>{}</i>", search_term));
+        search_results.append_child(&title).unwrap();
 
         for s in sorted {
             let result_element = self.document.create_element("div").unwrap();
@@ -200,5 +185,13 @@ impl Book {
             result_element.append_child(&link_element).unwrap();
             search_results.append_child(&result_element).unwrap();
         }
+
+        let pages = self.pages_by_id.lock().unwrap();
+        let home = pages.get("page-0").unwrap();
+        home.element.set_text_content(None);
+        home.element.append_child(&search_results).unwrap();
+        home.setup_links().await;
+
+        // pop rest of the stack
     }
 }

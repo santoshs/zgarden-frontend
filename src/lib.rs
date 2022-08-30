@@ -6,12 +6,14 @@ use std::collections::{HashMap, HashSet};
 use std::panic;
 use url::Url;
 use wasm_bindgen::{prelude::*, JsCast};
+use wasm_bindgen_futures::spawn_local;
 use web_sys::HtmlFormElement;
 
 extern crate lazy_static;
 
 mod book;
 mod page;
+mod utils;
 
 use book::Book;
 
@@ -70,7 +72,6 @@ pub async fn setup() {
 
 fn setup_search(document: web_sys::Document, book: &'static Book) {
     let form: HtmlFormElement = document
-        .clone()
         .get_element_by_id("search-form")
         .unwrap()
         .dyn_into::<web_sys::HtmlFormElement>()
@@ -86,38 +87,11 @@ fn setup_search(document: web_sys::Document, book: &'static Book) {
         let form_data = web_sys::FormData::new_with_form(&form).unwrap();
         let search_term = form_data.get("search-input").as_string().unwrap();
 
-        book.search(search_term);
+        spawn_local(book.search(search_term));
         e.prevent_default();
     }) as Box<dyn FnMut(_)>);
 
     form.set_onsubmit(Some(c.as_ref().unchecked_ref()));
-    c.forget();
-
-    let doc = document.clone();
-    let c = Closure::wrap(Box::new(move |e: web_sys::Event| {
-        let button = e
-            .target()
-            .unwrap()
-            .dyn_into::<web_sys::HtmlElement>()
-            .unwrap();
-        let modal_id = button.dataset().get("targetModal").unwrap();
-        let search_modal = doc.get_element_by_id(&modal_id).unwrap();
-        search_modal.class_list().remove_1("active").unwrap();
-
-        // Clear results
-        search_modal
-            .query_selector("#search-results")
-            .unwrap()
-            .unwrap()
-            .set_text_content(None);
-    }) as Box<dyn FnMut(_)>);
-
-    let search_dismiss_button = document
-        .get_element_by_id("search-modal-dismiss")
-        .unwrap()
-        .dyn_into::<web_sys::HtmlElement>()
-        .unwrap();
-    search_dismiss_button.set_onclick(Some(c.as_ref().unchecked_ref()));
     c.forget();
 }
 
