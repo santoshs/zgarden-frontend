@@ -4,3 +4,4 @@
 - [X] When opening a link from the middle of the stack, pop all of the above it
 - [ ] Minimize previous stacks when going above window width
 - [ ] Show breadcrumbs from home to the current node
+- [ ] Search (eliminate stop words, search only after 3 letters are entered)

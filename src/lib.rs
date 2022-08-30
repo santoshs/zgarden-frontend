@@ -1,8 +1,13 @@
+use async_once::AsyncOnce;
+use lazy_static::lazy_static;
+use reqwest::{self, header, header::CONTENT_TYPE};
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 use std::panic;
 use url::Url;
-use wasm_bindgen::prelude::*;
+use wasm_bindgen::{prelude::*, JsCast};
+use web_sys::HtmlFormElement;
 
-#[macro_use]
 extern crate lazy_static;
 
 mod book;
@@ -37,12 +42,13 @@ pub fn log(s: &str) {
     _log!("{}", s);
 }
 
-fn get_book() -> &'static Book {
-    log("get_book called");
+async fn get_book() -> &'static Book {
+    log("Getting book");
     lazy_static! {
-        static ref BOOK: Book = Book::new();
+        static ref BOOK: AsyncOnce<Book> = AsyncOnce::new(Book::new());
     }
-    &BOOK
+
+    BOOK.get().await
 }
 
 #[wasm_bindgen]
@@ -53,13 +59,66 @@ pub async fn setup() {
     let document = window.document().expect("Expecting a document on window");
     let page = document.get_element_by_id("page-0");
 
+    setup_search(document, get_book().await);
     match page {
         Some(p) => {
-            crate::log("adding home page");
-            get_book().add_home_page(p);
+            get_book().await.add_home_page(p).await;
         }
         None => log("Cannot get element with id page-0"),
     }
+}
+
+fn setup_search(document: web_sys::Document, book: &'static Book) {
+    let form: HtmlFormElement = document
+        .clone()
+        .get_element_by_id("search-form")
+        .unwrap()
+        .dyn_into::<web_sys::HtmlFormElement>()
+        .unwrap();
+
+    let c = Closure::wrap(Box::new(move |e: web_sys::Event| {
+        let form = e
+            .target()
+            .unwrap()
+            .dyn_into::<web_sys::HtmlFormElement>()
+            .unwrap();
+
+        let form_data = web_sys::FormData::new_with_form(&form).unwrap();
+        let search_term = form_data.get("search-input").as_string().unwrap();
+
+        book.search(search_term);
+        e.prevent_default();
+    }) as Box<dyn FnMut(_)>);
+
+    form.set_onsubmit(Some(c.as_ref().unchecked_ref()));
+    c.forget();
+
+    let doc = document.clone();
+    let c = Closure::wrap(Box::new(move |e: web_sys::Event| {
+        let button = e
+            .target()
+            .unwrap()
+            .dyn_into::<web_sys::HtmlElement>()
+            .unwrap();
+        let modal_id = button.dataset().get("targetModal").unwrap();
+        let search_modal = doc.get_element_by_id(&modal_id).unwrap();
+        search_modal.class_list().remove_1("active").unwrap();
+
+        // Clear results
+        search_modal
+            .query_selector("#search-results")
+            .unwrap()
+            .unwrap()
+            .set_text_content(None);
+    }) as Box<dyn FnMut(_)>);
+
+    let search_dismiss_button = document
+        .get_element_by_id("search-modal-dismiss")
+        .unwrap()
+        .dyn_into::<web_sys::HtmlElement>()
+        .unwrap();
+    search_dismiss_button.set_onclick(Some(c.as_ref().unchecked_ref()));
+    c.forget();
 }
 
 fn get_origin(u: Url) -> String {
@@ -82,3 +141,55 @@ fn get_origin(u: Url) -> String {
 // fn print_type_of<T>(_: &T) {
 //     console_log(&format!("variable type is: {}", std::any::type_name::<T>()))
 // }
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct SearchData {
+    title: String,
+    content: String,
+    id: String,
+    url: String,
+}
+
+async fn get_search_index(window: web_sys::Window) -> HashMap<String, HashSet<(String, String)>> {
+    let location = window.location();
+    let url = location.origin().unwrap() + "/search/index.json";
+    let mut headers = header::HeaderMap::new();
+    headers.insert(
+        CONTENT_TYPE,
+        header::HeaderValue::from_static("application/json"),
+    );
+
+    log("Initialising search");
+
+    let client = reqwest::Client::builder()
+        .default_headers(headers)
+        .build()
+        .unwrap();
+    let search_db = match client.get(url.clone()).send().await {
+        Ok(resp) => match resp.json::<Vec<SearchData>>().await {
+            Ok(n) => n,
+            Err(e) => {
+                log(&e.to_string());
+                Vec::new()
+            }
+        },
+        Err(e) => {
+            log(&e.to_string());
+            Vec::new()
+        }
+    };
+
+    let mut index: HashMap<String, HashSet<(String, String)>> = HashMap::new();
+    for s in search_db {
+        let text = s.title.clone() + " " + &s.content;
+
+        for k in text.split(' ') {
+            let v = index.entry(k.to_string()).or_default();
+
+            v.insert((s.url.to_string(), s.title.to_string()));
+        }
+    }
+
+    log(&format!("Number of search index entries: {}", index.len()));
+    index
+}

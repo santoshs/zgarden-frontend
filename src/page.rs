@@ -54,14 +54,14 @@ impl Page {
                 self.element.append_child(&content).unwrap();
                 typeset_math();
 
-                self.setup_links();
+                self.setup_links().await;
             }
             Err(e) => log(&e.to_string()),
         }
     }
 
-    pub fn setup_links(&self) {
-        let book = get_book();
+    pub async fn setup_links(&self) {
+        let book = get_book().await;
         let links = self
             .element
             .query_selector_all("a")
@@ -104,48 +104,42 @@ impl Page {
                 .dyn_into::<web_sys::HtmlElement>()
                 .unwrap();
 
-            let href = link.get_attribute("href");
-            match href {
-                Some(x) => {
-                    let window = web_sys::window().expect("Global window does not exist");
-                    let location = window.location();
-                    let mut url = x;
-                    loop {
-                        let parsed_url = Url::parse(&url);
-                        match parsed_url {
-                            Ok(u) => {
-                                match book.get_page(u.to_string()) {
-                                    Some(_) => {
-                                        link.class_list().add_1("visited").unwrap();
-                                    }
-                                    None => {
-                                        if crate::get_origin(u.clone())
-                                            != location.origin().unwrap()
-                                        {
-                                            link.set_attribute("target", "_blank").unwrap_throw();
-                                            break;
-                                        }
-                                    }
-                                };
-                                // If it is a url fragment, like footnotes, then skip
-                                if let Some(_) = u.fragment() {
-                                    break;
+            if let Some(x) = link.get_attribute("href") {
+                let window = web_sys::window().expect("Global window does not exist");
+                let location = window.location();
+                let mut url = x;
+                loop {
+                    let parsed_url = Url::parse(&url);
+                    match parsed_url {
+                        Ok(u) => {
+                            match book.get_page(u.to_string()) {
+                                Some(_) => {
+                                    link.class_list().add_1("visited").unwrap();
                                 }
-
-                                link.set_onclick(Some(c.as_ref().unchecked_ref()));
-                                c.forget();
+                                None => {
+                                    if crate::get_origin(u.clone()) != location.origin().unwrap() {
+                                        link.set_attribute("target", "_blank").unwrap_throw();
+                                        break;
+                                    }
+                                }
+                            };
+                            // If it is a url fragment, like footnotes, then skip
+                            if let Some(_) = u.fragment() {
                                 break;
                             }
-                            Err(e) => match e {
-                                ParseError::RelativeUrlWithoutBase => {
-                                    url = location.origin().unwrap() + &url;
-                                }
-                                _ => console_log(&format!("{:?}", e)),
-                            },
-                        };
-                    }
+
+                            link.set_onclick(Some(c.as_ref().unchecked_ref()));
+                            c.forget();
+                            break;
+                        }
+                        Err(e) => match e {
+                            ParseError::RelativeUrlWithoutBase => {
+                                url = location.origin().unwrap() + &url;
+                            }
+                            _ => console_log(&format!("{:?}", e)),
+                        },
+                    };
                 }
-                None => {}
             }
         }
     }
