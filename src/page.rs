@@ -72,7 +72,6 @@ impl Page {
         crate::log(&format!("Num Links in page: {}", links.length()));
 
         for i in 0..links.length() {
-            let link = links.item(i).clone();
             let c = Closure::wrap(Box::new(move |e: web_sys::MouseEvent| {
                 let target = e.target().unwrap().dyn_into::<web_sys::Element>().unwrap();
                 let mut url = target.get_attribute("href").unwrap();
@@ -95,7 +94,7 @@ impl Page {
                 e.stop_immediate_propagation();
                 e.stop_propagation();
 
-                spawn_local(book.add_page(url, link.clone()));
+                spawn_local(book.add_page(url, target.clone()));
             }) as Box<dyn FnMut(_)>);
 
             let link = links

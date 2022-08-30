@@ -53,7 +53,7 @@ impl Book {
         ));
     }
 
-    pub async fn add_page(&'static self, url: String, link: Option<web_sys::Node>) {
+    pub async fn add_page(&'static self, url: String, link_node: web_sys::Element) {
         crate::log(&format!("Adding page for {}", url));
         let page = match self.get_page(url.clone()) {
             Some(page) => page,
@@ -64,7 +64,6 @@ impl Book {
                 element.class_list().add_2("note", "col-4").unwrap();
                 element.set_id(&id);
 
-                let link_node = link.unwrap();
                 let anchor: &web_sys::HtmlAnchorElement =
                     link_node.dyn_ref::<web_sys::HtmlAnchorElement>().unwrap();
                 match anchor.closest(".note") {
