@@ -1,3 +1,4 @@
+* Todo
 - [X] Skip adding click actions to external urls
 - [X] Skip adding click actions to footnotes
 - [X] Open external urls in a new tab
@@ -6,4 +7,4 @@
 - [ ] Show breadcrumbs from home to the current node
 - [X] Search (eliminate stop words, search only after 3 letters are entered)
 - [ ] Bookmark & minimize buttons
-- [ ] Show alerts
+- [X] Show alerts
