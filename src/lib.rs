@@ -11,6 +11,7 @@ use web_sys::HtmlFormElement;
 
 extern crate lazy_static;
 
+mod alert;
 mod book;
 mod page;
 mod utils;
@@ -57,17 +58,18 @@ async fn get_book() -> &'static Book {
 pub async fn setup() {
     panic::set_hook(Box::new(console_error_panic_hook::hook));
     crate::log("wasm setup");
-    let window = web_sys::window().expect("Global window does not exist");
-    let document = window.document().expect("Expecting a document on window");
+    let book = get_book().await;
+    let document = book.document();
     let page = document.get_element_by_id("page-0");
 
-    setup_search(document, get_book().await);
+    setup_search(document.clone(), get_book().await);
     match page {
         Some(p) => {
             get_book().await.add_home_page(p).await;
         }
         None => log("Cannot get element with id page-0"),
     }
+    alert::show_alert(Some("Book"), "Loaded!");
 }
 
 fn setup_search(document: web_sys::Document, book: &'static Book) {
@@ -112,7 +114,11 @@ fn get_origin(u: Url) -> String {
         chars.next_back();
         chars.as_str().to_string()
     } else {
-        log(&format!("Invalid URL: Invalid host string in URL: {}", u));
+        crate::alert::show_alert(
+            Some("Error"),
+            &format!("Invalid URL: Invalid host string in URL: {}", u),
+        );
+
         u.to_string()
     }
 }

@@ -1,4 +1,5 @@
-use reqwest::{self, header, header::CONTENT_TYPE, Error};
+use anyhow::{anyhow, Error};
+use reqwest::{self, header, header::CONTENT_TYPE};
 use serde::Deserialize;
 use wasm_bindgen::{closure::Closure, prelude::*, JsCast};
 use wasm_bindgen_futures::spawn_local;
@@ -36,6 +37,13 @@ impl Page {
             .build()
             .unwrap();
         let res = client.get(self.url.clone()).send().await?;
+        if res.status().is_client_error() || res.status().is_server_error() {
+            return Err(anyhow!(res
+                .status()
+                .canonical_reason()
+                .or(Some("Note not found"))
+                .unwrap()));
+        }
         let note = res.json::<NoteNode>().await?;
         let title = self.document.create_element("h1").unwrap();
         title.class_list().add_1("title").unwrap();

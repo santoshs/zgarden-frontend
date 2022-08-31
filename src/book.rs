@@ -79,7 +79,8 @@ impl Book {
                 ));
                 let init_result = page.init().await;
                 if init_result.is_err() {
-                    log(&init_result.unwrap_err().to_string());
+                    crate::alert::show_alert(Some("Error"), &init_result.unwrap_err().to_string());
+
                     return;
                 }
 
@@ -121,9 +122,16 @@ impl Book {
         self.window.clone()
     }
 
+    pub fn document(&self) -> web_sys::Document {
+        self.document.clone()
+    }
+
     pub async fn search(&self, search_term: String) {
         if search_term.trim().len() < 3 {
-            // Show a alert
+            crate::alert::show_alert(
+                Some("Search"),
+                "More than three characters needed for searching",
+            );
             return;
         }
         log(&format!("searching for .. {}", search_term));
@@ -140,7 +148,6 @@ impl Book {
             }
         }
 
-        log(&format!("Found {} results", results.len()));
         self.show_search_results(search_term, results).await;
     }
 
@@ -154,7 +161,10 @@ impl Book {
         sorted.sort_by(|a, b| b.1.cmp(a.1));
 
         if sorted.is_empty() {
-            // Show an alert
+            crate::alert::show_alert(
+                Some("Search"),
+                &format!("No notes found for <i>{}</i>", search_term),
+            );
             return;
         }
 
