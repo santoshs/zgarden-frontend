@@ -12,6 +12,7 @@ use wasm_bindgen::{closure::Closure, JsCast};
 fn create_toast(
     document: &web_sys::Document,
     title_text: Option<&str>,
+    subtitle: Option<&str>,
     message: &str,
 ) -> web_sys::Element {
     // The main toast
@@ -32,7 +33,7 @@ fn create_toast(
     title.set_text_content(title_text);
 
     let sub_title = document.create_element("small").unwrap();
-    sub_title.set_text_content(None);
+    sub_title.set_text_content(subtitle);
 
     // The close button in the header
     let close = document.create_element("button").unwrap();
@@ -69,12 +70,12 @@ fn create_toast(
     toast
 }
 
-pub fn show_alert(title: Option<&str>, message: &str) {
+pub fn show_alert(title: Option<&str>, subtitle: Option<&str>, message: &str) {
     let window = web_sys::window().expect("Global window does not exist");
     let document = window.document().expect("Expecting a document on window");
 
     if let Some(alert_container) = document.get_element_by_id("alert-container") {
-        let toast = create_toast(&document, title, message);
+        let toast = create_toast(&document, title, subtitle, message);
         alert_container
             .insert_before(&toast, alert_container.first_child().as_ref())
             .unwrap();

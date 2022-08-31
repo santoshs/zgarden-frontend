@@ -48,11 +48,6 @@ impl Book {
             .await;
         self.page_list.lock().await.push(page.clone());
         page.setup_links().await;
-
-        log(&format!(
-            "Total number of search items: {}",
-            self.search_index.len()
-        ));
     }
 
     pub async fn add_page(&'static self, url: String, link_node: web_sys::Element) {
@@ -73,13 +68,13 @@ impl Book {
                     document: self.document.clone(),
                 });
 
-                log(&format!(
-                    "number of page in list: {}",
-                    self.page_list.lock().await.len()
-                ));
                 let init_result = page.init().await;
                 if init_result.is_err() {
-                    crate::alert::show_alert(Some("Error"), &init_result.unwrap_err().to_string());
+                    crate::alert::show_alert(
+                        Some("Error"),
+                        None,
+                        &init_result.unwrap_err().to_string(),
+                    );
 
                     return;
                 }
@@ -130,6 +125,7 @@ impl Book {
         if search_term.trim().len() < 3 {
             crate::alert::show_alert(
                 Some("Search"),
+                None,
                 "More than three characters needed for searching",
             );
             return;
@@ -163,6 +159,7 @@ impl Book {
         if sorted.is_empty() {
             crate::alert::show_alert(
                 Some("Search"),
+                None,
                 &format!("No notes found for <i>{}</i>", search_term),
             );
             return;

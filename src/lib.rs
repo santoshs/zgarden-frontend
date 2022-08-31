@@ -46,7 +46,6 @@ pub fn log(s: &str) {
 }
 
 async fn get_book() -> &'static Book {
-    log("Getting book");
     lazy_static! {
         static ref BOOK: AsyncOnce<Book> = AsyncOnce::new(Book::new());
     }
@@ -69,7 +68,7 @@ pub async fn setup() {
         }
         None => log("Cannot get element with id page-0"),
     }
-    alert::show_alert(Some("Book"), "Loaded!");
+    alert::show_alert(Some("Book"), None, "Loaded!");
 }
 
 fn setup_search(document: web_sys::Document, book: &'static Book) {
@@ -116,6 +115,7 @@ fn get_origin(u: Url) -> String {
     } else {
         crate::alert::show_alert(
             Some("Error"),
+            None,
             &format!("Invalid URL: Invalid host string in URL: {}", u),
         );
 
@@ -143,8 +143,6 @@ async fn get_search_index(window: web_sys::Window) -> HashMap<String, HashSet<(S
         CONTENT_TYPE,
         header::HeaderValue::from_static("application/json"),
     );
-
-    log("Initialising search");
 
     let client = reqwest::Client::builder()
         .default_headers(headers)
@@ -175,6 +173,11 @@ async fn get_search_index(window: web_sys::Window) -> HashMap<String, HashSet<(S
         }
     }
 
-    log(&format!("Number of search index entries: {}", index.len()));
+    crate::alert::show_alert(
+        Some("Search Initialised"),
+        None,
+        &format!("Number of search index entries: {}", index.len()),
+    );
+
     index
 }

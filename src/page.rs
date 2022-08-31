@@ -30,8 +30,6 @@ impl Page {
             header::HeaderValue::from_static("application/json"),
         );
 
-        crate::log("page initialization");
-
         let client = reqwest::Client::builder()
             .default_headers(headers)
             .build()
@@ -68,8 +66,6 @@ impl Page {
             .unwrap()
             .dyn_into::<web_sys::NodeList>()
             .unwrap();
-
-        crate::log(&format!("Num Links in page: {}", links.length()));
 
         for i in 0..links.length() {
             let c = Closure::wrap(Box::new(move |e: web_sys::MouseEvent| {
