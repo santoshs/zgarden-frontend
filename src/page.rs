@@ -1,11 +1,11 @@
-use reqwest::{self, header, header::CONTENT_TYPE};
+use reqwest::{self, header, header::CONTENT_TYPE, Error};
 use serde::Deserialize;
 use wasm_bindgen::{closure::Closure, prelude::*, JsCast};
 use wasm_bindgen_futures::spawn_local;
 
 use crate::get_book;
+use crate::typeset_math;
 use crate::utils::parse_url;
-use crate::{log, typeset_math};
 
 #[derive(Clone)]
 pub struct Page {
@@ -22,7 +22,7 @@ struct NoteNode {
 }
 
 impl Page {
-    pub async fn init(&self) {
+    pub async fn init(&self) -> Result<(), Error> {
         let mut headers = header::HeaderMap::new();
         headers.insert(
             CONTENT_TYPE,
@@ -35,29 +35,21 @@ impl Page {
             .default_headers(headers)
             .build()
             .unwrap();
-        let res = client.get(self.url.clone()).send().await;
-        match res {
-            Ok(r) => {
-                let note = match r.json::<NoteNode>().await {
-                    Ok(n) => n,
-                    Err(e) => {
-                        log(&e.to_string());
-                        return;
-                    }
-                };
-                let title = self.document.create_element("h2").unwrap();
-                title.set_inner_html(&note.title);
-                self.element.append_child(&title).unwrap();
+        let res = client.get(self.url.clone()).send().await?;
+        let note = res.json::<NoteNode>().await?;
+        let title = self.document.create_element("h1").unwrap();
+        title.class_list().add_1("title").unwrap();
+        title.set_inner_html(&note.title);
+        self.element.append_child(&title).unwrap();
 
-                let content = self.document.create_element("div").unwrap();
-                content.set_inner_html(&note.content);
-                self.element.append_child(&content).unwrap();
-                typeset_math();
+        let content = self.document.create_element("div").unwrap();
+        content.set_inner_html(&note.content);
+        self.element.append_child(&content).unwrap();
+        typeset_math();
 
-                self.setup_links().await;
-            }
-            Err(e) => log(&e.to_string()),
-        }
+        self.setup_links().await;
+
+        Ok(())
     }
 
     pub async fn setup_links(&self) {
@@ -76,12 +68,13 @@ impl Page {
                 let target = e.target().unwrap().dyn_into::<web_sys::Element>().unwrap();
                 let url = target.get_attribute("href").unwrap();
                 let location = book.window().location();
+                let parsed_url = parse_url(&url, location);
 
                 e.prevent_default();
                 e.stop_immediate_propagation();
                 e.stop_propagation();
 
-                spawn_local(book.add_page(parse_url(&url, location).to_string(), target));
+                spawn_local(book.add_page(parsed_url.to_string(), target));
             }) as Box<dyn FnMut(_)>);
 
             let link = links
@@ -94,7 +87,7 @@ impl Page {
                 let window = web_sys::window().expect("Global window does not exist");
                 let location = window.location();
                 let u = parse_url(&url, location.clone());
-                match book.get_page(u.to_string()) {
+                match book.get_page(u.to_string()).await {
                     Some(_) => {
                         link.class_list().add_1("visited").unwrap();
                     }

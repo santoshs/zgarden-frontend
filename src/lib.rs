@@ -98,18 +98,23 @@ fn setup_search(document: web_sys::Document, book: &'static Book) {
 fn get_origin(u: Url) -> String {
     let mut url = Url::parse(&u[..url::Position::BeforePath]).unwrap();
 
-    match url.set_host(Some(u.host_str().unwrap())) {
-        Ok(()) => {}
-        Err(e) => log(&e.to_string()),
-    }
-    url.set_scheme(u.scheme()).unwrap();
-    if let Some(p) = u.port() {
-        url.set_port(Some(p)).unwrap();
-    }
+    if let Some(host_str) = u.host_str() {
+        match url.set_host(Some(host_str)) {
+            Ok(()) => {}
+            Err(e) => log(&e.to_string()),
+        }
+        url.set_scheme(u.scheme()).unwrap();
+        if let Some(p) = u.port() {
+            url.set_port(Some(p)).unwrap();
+        }
 
-    let mut chars = url.as_str().chars();
-    chars.next_back();
-    return chars.as_str().to_string();
+        let mut chars = url.as_str().chars();
+        chars.next_back();
+        chars.as_str().to_string()
+    } else {
+        log(&format!("Invalid URL: Invalid host string in URL: {}", u));
+        u.to_string()
+    }
 }
 
 // fn print_type_of<T>(_: &T) {

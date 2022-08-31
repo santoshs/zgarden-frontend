@@ -1,5 +1,6 @@
+use async_mutex::Mutex;
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use uuid::Uuid;
 use wasm_bindgen::JsCast;
 
@@ -43,8 +44,9 @@ impl Book {
             document: self.document.clone(),
         });
 
-        self.insert_page(page.clone(), url, "page-0".to_string());
-        self.page_list.lock().unwrap().push(page.clone());
+        self.insert_page(page.clone(), url, "page-0".to_string())
+            .await;
+        self.page_list.lock().await.push(page.clone());
         page.setup_links().await;
 
         log(&format!(
@@ -55,7 +57,7 @@ impl Book {
 
     pub async fn add_page(&'static self, url: String, link_node: web_sys::Element) {
         crate::log(&format!("Adding page for {}", url));
-        let page = match self.get_page(url.clone()) {
+        let page = match self.get_page(url.clone()).await {
             Some(page) => page,
             None => {
                 let id = Uuid::new_v4().to_string();
@@ -63,29 +65,6 @@ impl Book {
 
                 element.class_list().add_2("note", "col-4").unwrap();
                 element.set_id(&id);
-
-                let anchor: &web_sys::HtmlAnchorElement =
-                    link_node.dyn_ref::<web_sys::HtmlAnchorElement>().unwrap();
-                match anchor.closest(".note") {
-                    Ok(elem) => match elem {
-                        Some(e) => {
-                            let mut page_list = self.page_list.lock().unwrap();
-                            let len = page_list.len();
-                            let parent_index =
-                                page_list.iter().position(|x| x.id == e.id()).unwrap() + 1;
-                            if parent_index < page_list.len() {
-                                for p in page_list.iter().skip(parent_index) {
-                                    p.element.remove();
-                                    self.pages_by_id.lock().unwrap().remove(&p.id);
-                                    self.pages_by_url.lock().unwrap().remove(&p.url);
-                                }
-                            }
-                            page_list.drain(parent_index..len);
-                        }
-                        None => log("No parent found"),
-                    },
-                    Err(e) => log(&format!("{:?}", e)),
-                }
 
                 let page = Arc::new(Page {
                     url: url.clone(),
@@ -96,13 +75,31 @@ impl Book {
 
                 log(&format!(
                     "number of page in list: {}",
-                    self.page_list.lock().unwrap().len()
+                    self.page_list.lock().await.len()
                 ));
-                self.page_list.lock().unwrap().push(page.clone());
-                self.element.append_child(&element).unwrap();
+                let init_result = page.init().await;
+                if init_result.is_err() {
+                    log(&init_result.unwrap_err().to_string());
+                    return;
+                }
 
-                self.insert_page(page.clone(), url, id.clone());
-                page.init().await;
+                // Remove all pages to the right if origin page is in the middle
+                let anchor: &web_sys::HtmlAnchorElement =
+                    link_node.dyn_ref::<web_sys::HtmlAnchorElement>().unwrap();
+                match anchor.closest(".note") {
+                    Ok(elem) => match elem {
+                        Some(e) => {
+                            self.remove_pages_right_of(e.id()).await;
+                        }
+                        None => log("No parent found"),
+                    },
+                    Err(e) => log(&format!("{:?}", e)),
+                }
+
+                self.page_list.lock().await.push(page.clone());
+                self.element.append_child(&element).unwrap();
+                self.insert_page(page.clone(), url, id.clone()).await;
+
                 page
             }
         };
@@ -111,19 +108,13 @@ impl Book {
         self.document.document_element().unwrap().set_scroll_top(0);
     }
 
-    fn insert_page(&self, page: Arc<Page>, url: String, id: String) {
-        self.pages_by_url.lock().unwrap().insert(url, page.clone());
-        self.pages_by_id.lock().unwrap().insert(id, page);
+    async fn insert_page(&self, page: Arc<Page>, url: String, id: String) {
+        self.pages_by_url.lock().await.insert(url, page.clone());
+        self.pages_by_id.lock().await.insert(id, page);
     }
 
-    pub fn get_page(&self, url: String) -> Option<Arc<Page>> {
-        match self.pages_by_url.lock() {
-            Ok(p) => p.get(&url).cloned(),
-            Err(e) => {
-                crate::console_log(&e.to_string());
-                None
-            }
-        }
+    pub async fn get_page(&self, url: String) -> Option<Arc<Page>> {
+        self.pages_by_url.lock().await.get(&url).cloned()
     }
 
     pub fn window(&self) -> web_sys::Window {
@@ -186,12 +177,31 @@ impl Book {
             search_results.append_child(&result_element).unwrap();
         }
 
-        let pages = self.pages_by_id.lock().unwrap();
+        let pages = self.pages_by_id.lock().await;
         let home = pages.get("page-0").unwrap();
         home.element.set_text_content(None);
         home.element.append_child(&search_results).unwrap();
         home.setup_links().await;
 
         // pop rest of the stack
+    }
+
+    pub async fn remove_page(&self, page: &Page) {
+        page.element.remove();
+        self.pages_by_id.lock().await.remove(&page.id);
+        self.pages_by_url.lock().await.remove(&page.url);
+    }
+
+    async fn remove_pages_right_of(&self, page_id: String) {
+        let mut page_list = self.page_list.lock().await;
+        let len = page_list.len();
+        let start_index = page_list.iter().position(|x| x.id == page_id).unwrap() + 1;
+        if start_index >= page_list.len() {
+            return;
+        }
+        for p in page_list.iter().skip(start_index) {
+            self.remove_page(p).await;
+        }
+        page_list.drain(start_index..len);
     }
 }
